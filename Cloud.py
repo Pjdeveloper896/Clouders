@@ -1,6 +1,5 @@
 from flask import Flask, request, redirect, url_for, render_template_string, send_from_directory, session
 from werkzeug.utils import secure_filename
-import os
 import sqlite3
 
 app = Flask(__name__)
@@ -295,5 +294,7 @@ code_editor_template = '''
 '''
 
 if __name__ == '__main__':
-    init_db()
-    app.run(debug=True)
+    import os
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
+
