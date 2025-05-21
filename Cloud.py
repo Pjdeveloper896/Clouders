@@ -1,15 +1,19 @@
 from flask import Flask, request, redirect, url_for, render_template_string, send_from_directory, session
 from werkzeug.utils import secure_filename
 import sqlite3
-import os 
+import os
+
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploaded_files')
 CODE_FOLDER = os.path.join(BASE_DIR, 'code_files')
+DB_PATH = os.path.join(BASE_DIR, 'users.db')
+
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(CODE_FOLDER, exist_ok=True)
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['CODE_FOLDER'] = CODE_FOLDER
 
@@ -18,13 +22,16 @@ ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'zip', 'mp3', '
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+@app.before_first_request
 def init_db():
-    conn = sqlite3.connect('users.db')
-    conn.execute('''CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL UNIQUE,
-        password TEXT NOT NULL
-    )''')
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password TEXT NOT NULL
+        )
+    ''')
     conn.commit()
     conn.close()
 
@@ -40,7 +47,7 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        conn = sqlite3.connect('users.db')
+        conn = sqlite3.connect(DB_PATH)
         user = conn.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password)).fetchone()
         conn.close()
         if user:
@@ -57,7 +64,7 @@ def signup():
         username = request.form['username']
         password = request.form['password']
         try:
-            conn = sqlite3.connect('users.db')
+            conn = sqlite3.connect(DB_PATH)
             conn.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
             conn.commit()
             conn.close()
@@ -253,48 +260,62 @@ code_editor_template = '''
 
 <div class="container">
   <h4>Code Editor</h4>
-  <form method="POST">
-    <input name="filename" placeholder="Filename" required value="{{ selected_file or '' }}">
-    <textarea id="code" name="content">{{ content }}</textarea>
-    <input type="hidden" name="action" value="save">
-    <button type="submit" class="btn green">Save</button>
-  </form>
-
-  <h5>Saved Files</h5>
-  <ul class="collection">
-    {% for file in files %}
-      <li class="collection-item">
-        <a href="/codeeditor?file={{ file }}">{{ file }}</a>
-        <form method="POST" style="display:inline;">
-          <input type="hidden" name="filename" value="{{ file }}">
-          <input type="hidden" name="action" value="delete">
-          <button class="btn-small red" type="submit">Delete</button>
-        </form>
-      </li>
-    {% endfor %}
-  </ul>
-</div>
-
-<footer class="page-footer blue">
-  <div class="container center-align white-text">
-    Code Editor &copy; 2025
+  <div class="row">
+    <div class="col s4">
+      <h5>Files</h5>
+      <ul class="collection">
+        {% for file in files %}
+          <li class="collection-item {% if file == selected_file %}active blue lighten-4{% endif %}">
+            <a href="{{ url_for('code_editor') }}?file={{ file }}">{{ file }}</a>
+            <form method="POST" style="display:inline;">
+              <input type="hidden" name="filename" value="{{ file }}">
+              <input type="hidden" name="action" value="delete">
+              <button class="btn-small red" type="submit" onclick="return confirm('Delete this file?');">Delete</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+      <form method="POST">
+        <input type="text" name="filename" placeholder="New file name" required>
+        <input type="hidden" name="action" value="save">
+        <textarea name="content" style="display:none;"></textarea>
+        <button class="btn green" type="submit">Create New File</button>
+      </form>
+    </div>
+    <div class="col s8">
+      {% if selected_file %}
+      <form method="POST">
+        <h5>Editing: {{ selected_file }}</h5>
+        <input type="hidden" name="filename" value="{{ selected_file }}">
+        <input type="hidden" name="action" value="save">
+        <textarea id="code" name="content" style="width:100%;height:400px;">{{ content }}</textarea>
+        <button class="btn blue" type="submit">Save</button>
+      </form>
+      {% else %}
+      <p>Select a file to edit.</p>
+      {% endif %}
+    </div>
   </div>
-</footer>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/javascript/javascript.min.js"></script>
 <script>
-  var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
+  var editor = CodeMirror.fromTextArea(document.getElementById('code'), {
     lineNumbers: true,
-    mode: "javascript"
+    mode: 'javascript',
+    theme: 'default'
   });
 </script>
+
+<footer class="page-footer blue">
+  <div class="container">
+    <div class="center-align white-text"> clouders &copy; 2025</div>
+  </div>
+</footer>
 </body>
 </html>
 '''
 
 if __name__ == '__main__':
-    import os
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
-
+    app.run(debug=True)
